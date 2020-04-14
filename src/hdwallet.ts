@@ -4,30 +4,23 @@ import { NetworkProvider } from './providers/network.provider';
 
 export class HDWallet {
 
-    private readonly bip32: BIP32Interface;
-    private readonly _getAddress: (pubKey: Buffer) => Buffer;
-
     static fromBase58(key: string, network?: NetworkProvider) {
-        return new this(BIP32.fromBase58(key, network));
+        return new this(BIP32.fromBase58(key, network), getAddressFromNetwork(network));
     }
 
     static fromPrivateKey(key: Buffer, chainCode: Buffer, network?: NetworkProvider) {
-        return new this(BIP32.fromPrivateKey(key, chainCode, network));
+        return new this(BIP32.fromPrivateKey(key, chainCode, network), getAddressFromNetwork(network));
     }
 
     static fromPublicKey(key: Buffer, chainCode: Buffer, network?: NetworkProvider) {
-        return new this(BIP32.fromPublicKey(key, chainCode, network));
+        return new this(BIP32.fromPublicKey(key, chainCode, network), getAddressFromNetwork(network));
     }
 
     static fromSeed(seed: Buffer, network?: NetworkProvider) {
-        return new this(BIP32.fromSeed(seed, network));
+        return new this(BIP32.fromSeed(seed, network), getAddressFromNetwork(network));
     }
 
-    private constructor(bip32: BIP32Interface) {
-        this.bip32 = bip32!;
-        this._getAddress = bip32!.network && (bip32!.network as NetworkProvider).getAddress && (bip32!.network as NetworkProvider).getAddress.bind(bip32!.network) || (() => {
-            throw new Error('Not implemented by NetworkProvider');
-        });
+    private constructor(private readonly bip32: BIP32Interface, private readonly getAddressFromPubKey: (pubKey: Buffer) => Buffer) {
     }
 
     getIdentifier(): Buffer {
@@ -46,20 +39,20 @@ export class HDWallet {
         return this.bip32!.isNeutered();
     }
 
+    toNeutered(): HDWallet {
+        return new HDWallet(this.bip32!.neutered(), this.getAddressFromPubKey);
+    }
+
     derive(index: number, hardened = false): HDWallet {
-        return new HDWallet(hardened ? this.bip32!.deriveHardened(index) : this.bip32!.derive(index));
+        return new HDWallet(hardened ? this.bip32!.deriveHardened(index) : this.bip32!.derive(index), this.getAddressFromPubKey);
     }
 
     derivePath(path: string): HDWallet {
-        return new HDWallet(this.bip32!.derivePath(path));
-    }
-
-    neuter(): HDWallet {
-        return new HDWallet(this.bip32!.neutered());
+        return new HDWallet(this.bip32!.derivePath(path), this.getAddressFromPubKey);
     }
 
     getAddress(): Buffer {
-        return this._getAddress(this.bip32.publicKey);
+        return this.getAddressFromPubKey(this.bip32.publicKey);
     }
 
     sign(hash: Buffer, options: SignOptions = {}): Buffer {
@@ -70,6 +63,12 @@ export class HDWallet {
         return this.bip32!.verify(hash, signature);
     }
 
+}
+
+function getAddressFromNetwork(network?: NetworkProvider): (pubKey: Buffer) => Buffer {
+    return network && (network as NetworkProvider).getAddress && (network as NetworkProvider).getAddress.bind(network) || (() => {
+        throw new Error('Not implemented by NetworkProvider');
+    });
 }
 
 interface SignOptions {

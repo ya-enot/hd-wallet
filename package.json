@@ -1,6 +1,6 @@
 {
-  "name": "hd-wallet",
-  "version": "0.1.0",
+  "name": "@ya-enot/hd-wallet",
+  "version": "0.1.1",
   "description": "Hierarchical Deterministic Wallet library",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -22,6 +22,7 @@
     "url": "https://github.com/ya-enot/hd-wallet/issues"
   },
   "homepage": "https://github.com/ya-enot/hd-wallet#readme",
+  "bundleDependencies": [],
   "devDependencies": {
     "@types/jest": "^25.2.1",
     "@types/node": "^13.11.1",
