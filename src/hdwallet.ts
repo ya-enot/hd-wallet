@@ -27,6 +27,22 @@ export class HDWallet {
         return this.bip32!.identifier;
     }
 
+    getPrivateKey(): Buffer | undefined {
+        return this.bip32!.privateKey;
+    }
+
+    getPublicKey(): Buffer {
+        return this.bip32!.publicKey;
+    }
+
+    getChainCode(): Buffer {
+        return this.bip32!.chainCode;
+    }
+
+    toBase58(): string {
+        return this.bip32!.toBase58();
+    }
+
     getDepth(): number {
         return this.bip32!.depth;
     }

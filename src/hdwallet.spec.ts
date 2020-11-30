@@ -14,23 +14,38 @@ describe('HDWallet constructor', () => {
     const identifier = '471c217fde0437b8444c9b80e91cc2ee61e8aee2';
 
     test('fromBase58xprv', async () => {
-        await actualTest(HDWallet.fromBase58(xprv));
+        let wallet = HDWallet.fromBase58(xprv);
+        await actualTest(wallet);
+        await expect(wallet.getPrivateKey()).toStrictEqual(prvKey);
+        await expect(wallet.getPublicKey()).toStrictEqual(pubKey);
     });
 
     test('fromBase58xpub', async () => {
-        await actualTest(HDWallet.fromBase58(xpub));
+        let wallet = HDWallet.fromBase58(xpub);
+        await actualTest(wallet);
+        await expect(wallet.getPrivateKey()).toBeUndefined();
+        await expect(wallet.getPublicKey()).toStrictEqual(pubKey);
     });
 
     test('fromSeed', async () => {
-        await actualTest(HDWallet.fromSeed(seed));
+        let wallet = HDWallet.fromSeed(seed)
+        await actualTest(wallet);
+        await expect(wallet.getPrivateKey()).toStrictEqual(prvKey);
+        await expect(wallet.getPublicKey()).toStrictEqual(pubKey);
     });
 
     test('fromPublicKey', async () => {
-        await actualTest(HDWallet.fromPublicKey(pubKey, chainCode));
+        let wallet = HDWallet.fromPublicKey(pubKey, chainCode);
+        await actualTest(wallet);
+        await expect(wallet.getPrivateKey()).toBeUndefined();
+        await expect(wallet.getPublicKey()).toStrictEqual(pubKey);
     });
 
     test('fromPrivateKey', async () => {
-        await actualTest(HDWallet.fromPrivateKey(prvKey, chainCode));
+        let wallet = HDWallet.fromPrivateKey(prvKey, chainCode);
+        await actualTest(wallet);
+        await expect(wallet.getPrivateKey()).toStrictEqual(prvKey);
+        await expect(wallet.getPublicKey()).toStrictEqual(pubKey);
     });
 
     async function actualTest(wallet: HDWallet) {
@@ -60,7 +75,6 @@ describe('HDWallet address', () => {
         await expect(wallet.getAddress().toString()).toStrictEqual(ethereumAddress);
     });
 
-
     test('custom', async () => {
         const wallet = HDWallet.fromBase58(xpub, new CustomNetworkProvider());
         await expect(wallet.getAddress().toString()).toStrictEqual(customAddress);
@@ -68,109 +82,155 @@ describe('HDWallet address', () => {
 
 });
 
-describe('HDWallet public derivation', derivationTest(HDWallet.fromBase58(xpub)));
+describe('HDWallet derivation', async () => {
+    describe('from Base58xprv Ethereum', async () => {
+        derivationTest(HDWallet.fromBase58(xprv, EthereumNetwork), dirivedWalletTest(true));
+    })
+    describe('from Base58xpub Ethereum', async () => {
+        derivationTest(HDWallet.fromBase58(xpub, EthereumNetwork), dirivedWalletTest(false));
+    })
+});
 
-describe('HDWallet private derivation', derivationTest(HDWallet.fromBase58(xprv)));
+function dirivedWalletTest(withPrivate: boolean): (wallet: HDWallet) => Promise<void> {
+    async function compareWallets(wallet1: HDWallet, wallet2: HDWallet) {
+        await expect(wallet1.getChainCode()).toStrictEqual(wallet2.getChainCode());
+        await expect(wallet1.getAddress()).toStrictEqual(wallet2.getAddress());
+        await expect(wallet1.getIdentifier()).toStrictEqual(wallet2.getIdentifier());
+        await expect(wallet1.getPrivateKey()).toStrictEqual(wallet2.getPrivateKey());
+        await expect(wallet1.isNeutered()).toStrictEqual(wallet2.isNeutered());
+        await expect(wallet1.getPublicKey()).toStrictEqual(wallet2.getPublicKey());
+    };
+    return async (wallet) => {
+        let pubKey = wallet.getPublicKey();
+        await expect(pubKey).toBeDefined();
+        let chainCode = wallet.getChainCode();
+        await expect(chainCode).toBeDefined();
+        let prvKey = wallet.getPrivateKey();
+        let walletbase58 = wallet.toBase58();
+        if (withPrivate) {
+            await expect(walletbase58.startsWith('xprv')).toBeTruthy();
+            await expect(prvKey).toBeDefined();
+            let prvWallet = HDWallet.fromPrivateKey(prvKey!, chainCode, EthereumNetwork);
+            await expect(prvWallet.getPrivateKey()).toBeDefined();
+            await compareWallets(wallet, prvWallet);
+        } else {
+            await expect(walletbase58.startsWith('xpub')).toBeTruthy();
+            await expect(prvKey).toBeUndefined();
+        }
+        let pubWallet = HDWallet.fromPublicKey(pubKey, chainCode, EthereumNetwork);
+        await compareWallets(wallet.toNeutered(), pubWallet);
+    }
+}
 
-function derivationTest(wallet: HDWallet) {
-    return () => {
+function derivationTest(wallet: HDWallet, subtest: (wallet: HDWallet) => Promise<void> = async () => { }) {
 
-        test('plain', async () => {
-            const d0 = wallet.derive(0);
+    test('plainDerive', async () => {
+        const d0 = wallet.derive(0);
+        const d1 = wallet.derive(1);
+        const d2 = wallet.derive(2);
+        const d3 = wallet.derive(3);
+        await expect(d0.getIndex()).toStrictEqual(0);
+        await expect(d0.getDepth()).toStrictEqual(1);
+        await expect(d1.getIndex()).toStrictEqual(1);
+        await expect(d1.getDepth()).toStrictEqual(1);
+        await expect(d2.getIndex()).toStrictEqual(2);
+        await expect(d2.getDepth()).toStrictEqual(1);
+        await expect(d3.getIndex()).toStrictEqual(3);
+        await expect(d3.getDepth()).toStrictEqual(1);
+        await subtest(d0);
+        await subtest(d1);
+        await subtest(d2);
+        await subtest(d3);
+    });
+
+    test('treeDerive', async () => {
+        const d0 = wallet.derive(0);
+        const d1 = d0.derive(0);
+        const d2 = d1.derive(0);
+        const d3 = d2.derive(0);
+        await expect(d0.getIndex()).toStrictEqual(0);
+        await expect(d0.getDepth()).toStrictEqual(1);
+        await expect(d1.getIndex()).toStrictEqual(0);
+        await expect(d1.getDepth()).toStrictEqual(2);
+        await expect(d2.getIndex()).toStrictEqual(0);
+        await expect(d2.getDepth()).toStrictEqual(3);
+        await expect(d3.getIndex()).toStrictEqual(0);
+        await expect(d3.getDepth()).toStrictEqual(4);
+        await subtest(d0);
+        await subtest(d1);
+        await subtest(d2);
+        await subtest(d3);
+    });
+
+    test('pathDerive', async () => {
+        const d0 = wallet.derivePath("m/0");
+        const d1 = wallet.derivePath("m/44/60/0/0");
+        const d2 = wallet.derivePath("m/44/60/0/0/1");
+        await expect(d0.getIdentifier()).toStrictEqual(wallet.derive(0).getIdentifier());
+        await expect(d0.getIndex()).toStrictEqual(0);
+        await expect(d0.getDepth()).toStrictEqual(1);
+        await expect(d1.getIdentifier()).toStrictEqual(wallet.derive(44).derive(60).derive(0).derive(0).getIdentifier());
+        await expect(d1.getIndex()).toStrictEqual(0);
+        await expect(d1.getDepth()).toStrictEqual(4);
+        await expect(d2.getIdentifier()).toStrictEqual(wallet.derive(44).derive(60).derive(0).derive(0).derive(1).getIdentifier());
+        await expect(d2.getIndex()).toStrictEqual(1);
+        await expect(d2.getDepth()).toStrictEqual(5);
+        await subtest(d0);
+        await subtest(d1);
+        await subtest(d2);
+    });
+
+}
+
+describe('HDWallet hardened derivation', () => {
+    describe('from Base58xprv', async () => {
+
+        const wallet = HDWallet.fromBase58(xprv);
+
+        test('plainDerive', async () => {
+            const d0 = wallet.derive(0, true);
             const d1 = wallet.derive(1);
-            const d2 = wallet.derive(2);
+            const d2 = wallet.derive(2, true);
             const d3 = wallet.derive(3);
-            await expect(d0.getIndex()).toStrictEqual(0);
+            await expect(d0.getIndex()).toStrictEqual(2147483648 + 0);
             await expect(d0.getDepth()).toStrictEqual(1);
             await expect(d1.getIndex()).toStrictEqual(1);
             await expect(d1.getDepth()).toStrictEqual(1);
-            await expect(d2.getIndex()).toStrictEqual(2);
+            await expect(d2.getIndex()).toStrictEqual(2147483648 + 2);
             await expect(d2.getDepth()).toStrictEqual(1);
             await expect(d3.getIndex()).toStrictEqual(3);
             await expect(d3.getDepth()).toStrictEqual(1);
         });
 
-        test('tree', async () => {
-            const d0 = wallet.derive(0);
+        test('treeDerive', async () => {
+            const d0 = wallet.derive(0, true);
             const d1 = d0.derive(0);
-            const d2 = d1.derive(0);
+            const d2 = d1.derive(0, true);
             const d3 = d2.derive(0);
-            await expect(d0.getIndex()).toStrictEqual(0);
+            await expect(d0.getIndex()).toStrictEqual(2147483648 + 0);
             await expect(d0.getDepth()).toStrictEqual(1);
             await expect(d1.getIndex()).toStrictEqual(0);
             await expect(d1.getDepth()).toStrictEqual(2);
-            await expect(d2.getIndex()).toStrictEqual(0);
+            await expect(d2.getIndex()).toStrictEqual(2147483648 + 0);
             await expect(d2.getDepth()).toStrictEqual(3);
             await expect(d3.getIndex()).toStrictEqual(0);
             await expect(d3.getDepth()).toStrictEqual(4);
         });
 
-        test('path', async () => {
-            const d0 = wallet.derivePath("m/0");
-            const d1 = wallet.derivePath("m/44/60/0/0");
-            const d2 = wallet.derivePath("m/44/60/0/0/1");
-            await expect(d0.getIdentifier()).toStrictEqual(wallet.derive(0).getIdentifier());
-            await expect(d0.getIndex()).toStrictEqual(0);
+        test('pathDerive', async () => {
+            const d0 = wallet.derivePath("m/0'");
+            const d1 = wallet.derivePath("m/44'/60'/0'/0");
+            const d2 = wallet.derivePath("m/44/60/0/0/1'");
+            await expect(d0.getIdentifier()).toStrictEqual(wallet.derive(0, true).getIdentifier());
+            await expect(d0.getIndex()).toStrictEqual(2147483648 + 0);
             await expect(d0.getDepth()).toStrictEqual(1);
-            await expect(d1.getIdentifier()).toStrictEqual(wallet.derive(44).derive(60).derive(0).derive(0).getIdentifier());
+            await expect(d1.getIdentifier()).toStrictEqual(wallet.derive(44, true).derive(60, true).derive(0, true).derive(0).getIdentifier());
             await expect(d1.getIndex()).toStrictEqual(0);
             await expect(d1.getDepth()).toStrictEqual(4);
-            await expect(d2.getIdentifier()).toStrictEqual(wallet.derive(44).derive(60).derive(0).derive(0).derive(1).getIdentifier());
-            await expect(d2.getIndex()).toStrictEqual(1);
+            await expect(d2.getIdentifier()).toStrictEqual(wallet.derive(44).derive(60).derive(0).derive(0).derive(1, true).getIdentifier());
+            await expect(d2.getIndex()).toStrictEqual(2147483648 + 1);
             await expect(d2.getDepth()).toStrictEqual(5);
         });
 
-    };
-}
-
-
-describe('HDWallet private hardened derivation', () => {
-
-    const wallet = HDWallet.fromBase58(xprv);
-
-    test('plain', async () => {
-        const d0 = wallet.derive(0, true);
-        const d1 = wallet.derive(1);
-        const d2 = wallet.derive(2, true);
-        const d3 = wallet.derive(3);
-        await expect(d0.getIndex()).toStrictEqual(2147483648 + 0);
-        await expect(d0.getDepth()).toStrictEqual(1);
-        await expect(d1.getIndex()).toStrictEqual(1);
-        await expect(d1.getDepth()).toStrictEqual(1);
-        await expect(d2.getIndex()).toStrictEqual(2147483648 + 2);
-        await expect(d2.getDepth()).toStrictEqual(1);
-        await expect(d3.getIndex()).toStrictEqual(3);
-        await expect(d3.getDepth()).toStrictEqual(1);
     });
-
-    test('tree', async () => {
-        const d0 = wallet.derive(0, true);
-        const d1 = d0.derive(0);
-        const d2 = d1.derive(0, true);
-        const d3 = d2.derive(0);
-        await expect(d0.getIndex()).toStrictEqual(2147483648 + 0);
-        await expect(d0.getDepth()).toStrictEqual(1);
-        await expect(d1.getIndex()).toStrictEqual(0);
-        await expect(d1.getDepth()).toStrictEqual(2);
-        await expect(d2.getIndex()).toStrictEqual(2147483648 + 0);
-        await expect(d2.getDepth()).toStrictEqual(3);
-        await expect(d3.getIndex()).toStrictEqual(0);
-        await expect(d3.getDepth()).toStrictEqual(4);
-    });
-
-    test('path', async () => {
-        const d0 = wallet.derivePath("m/0'");
-        const d1 = wallet.derivePath("m/44'/60'/0'/0");
-        const d2 = wallet.derivePath("m/44/60/0/0/1'");
-        await expect(d0.getIdentifier()).toStrictEqual(wallet.derive(0, true).getIdentifier());
-        await expect(d0.getIndex()).toStrictEqual(2147483648 + 0);
-        await expect(d0.getDepth()).toStrictEqual(1);
-        await expect(d1.getIdentifier()).toStrictEqual(wallet.derive(44, true).derive(60, true).derive(0, true).derive(0).getIdentifier());
-        await expect(d1.getIndex()).toStrictEqual(0);
-        await expect(d1.getDepth()).toStrictEqual(4);
-        await expect(d2.getIdentifier()).toStrictEqual(wallet.derive(44).derive(60).derive(0).derive(0).derive(1, true).getIdentifier());
-        await expect(d2.getIndex()).toStrictEqual(2147483648 + 1);
-        await expect(d2.getDepth()).toStrictEqual(5);
-    });
-
 });
